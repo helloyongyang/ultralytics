@@ -224,7 +224,7 @@ class BaseTrainer:
         # Model
         self.run_callbacks("on_pretrain_routine_start")
         ckpt = self.setup_model()
-        self.model = self.model.to(self.device)
+        self.model.model_clear = self.model.model_clear.to(self.device)
         self.set_model_attributes()
 
         # Freeze layers
@@ -423,10 +423,10 @@ class BaseTrainer:
                 if self.args.time:
                     self.stop |= (time.time() - self.train_time_start) > (self.args.time * 3600)
 
-                # Save model
-                if self.args.save or final_epoch:
-                    self.save_model()
-                    self.run_callbacks("on_model_save")
+                # # Save model
+                # if self.args.save or final_epoch:
+                #     self.save_model()
+                #     self.run_callbacks("on_model_save")
 
             # Scheduler
             t = time.time()

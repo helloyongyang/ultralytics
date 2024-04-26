@@ -112,9 +112,9 @@ class BaseValidator:
         if self.training:
             self.device = trainer.device
             self.data = trainer.data
-            self.args.half = self.device.type != "cpu"  # force FP16 val during training
+            self.args.half = False # self.device.type != "cpu"  # force FP16 val during training
             model = trainer.ema.ema or trainer.model
-            model = model.half() if self.args.half else model.float()
+            model.model_clear = model.model_clear.half() if self.args.half else model.model_clear.float()
             # self.model = model
             self.loss = torch.zeros_like(trainer.loss_items, device=trainer.device)
             self.args.plots &= trainer.stopper.possible_stop or (trainer.epoch == trainer.epochs - 1)
@@ -199,7 +199,7 @@ class BaseValidator:
         self.print_results()
         self.run_callbacks("on_val_end")
         if self.training:
-            model.float()
+            model.model_clear.float()
             results = {**stats, **trainer.label_loss_items(self.loss.cpu() / len(self.dataloader), prefix="val")}
             return {k: round(float(v), 5) for k, v in results.items()}  # return results as 5 decimal place floats
         else:
