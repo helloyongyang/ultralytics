@@ -1,0 +1,9 @@
+epochs: 1
+save_period: 1
+optimizer: SGD
+amp: False
+lr0: 0.00000001
+lrf: 0.1
+weight_decay: 0.0
+warmup_epochs: 0.0
+save_dir: /mnt/share/yongyang/projects/mqb/L6/scripts/train_log
