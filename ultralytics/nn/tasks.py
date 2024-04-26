@@ -71,6 +71,32 @@ except ImportError:
     thop = None
 
 
+class BaseModelClear(nn.Module):
+    def __init__(self, yaml, ch, verbose):
+        super().__init__()
+        self.model, self.save = parse_model(deepcopy(yaml), ch=ch, verbose=verbose)
+
+        self.inplace = yaml.get("inplace", True)
+
+        m = self.model[-1]  # Detect()
+        s = 256  # 2x min stride
+        m.inplace = self.inplace
+        forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
+        m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+        self.stride = m.stride
+        m.bias_init()  # only run once
+        initialize_weights(self)
+
+    def forward(self, x):
+        y = []  # outputs
+        for m in self.model:
+            if m.f != -1:  # if not from previous layer
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+            x = m(x)  # run
+            y.append(x if m.i in self.save else None)  # save output
+        return x
+
+
 class BaseModel(nn.Module):
     """The BaseModel class serves as a base class for all the models in the Ultralytics YOLO family."""
 
@@ -119,21 +145,22 @@ class BaseModel(nn.Module):
         Returns:
             (torch.Tensor): The last output of the model.
         """
-        y, dt, embeddings = [], [], []  # outputs
-        for m in self.model:
-            if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
-            if profile:
-                self._profile_one_layer(m, x, dt)
-            x = m(x)  # run
-            y.append(x if m.i in self.save else None)  # save output
-            if visualize:
-                feature_visualization(x, m.type, m.i, save_dir=visualize)
-            if embed and m.i in embed:
-                embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
-                if m.i == max(embed):
-                    return torch.unbind(torch.cat(embeddings, 1), dim=0)
-        return x
+        # y, dt, embeddings = [], [], []  # outputs
+        # for m in self.model:
+        #     if m.f != -1:  # if not from previous layer
+        #         x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+        #     if profile:
+        #         self._profile_one_layer(m, x, dt)
+        #     x = m(x)  # run
+        #     y.append(x if m.i in self.save else None)  # save output
+        #     if visualize:
+        #         feature_visualization(x, m.type, m.i, save_dir=visualize)
+        #     if embed and m.i in embed:
+        #         embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
+        #         if m.i == max(embed):
+        #             return torch.unbind(torch.cat(embeddings, 1), dim=0)
+        # return x
+        return self.model_clear(x)
 
     def _predict_augment(self, x):
         """Perform augmentations on input image x and return augmented inference."""
@@ -177,7 +204,7 @@ class BaseModel(nn.Module):
             (nn.Module): The fused model is returned.
         """
         if not self.is_fused():
-            for m in self.model.modules():
+            for m in self.model_clear.model.modules():
                 if isinstance(m, (Conv, Conv2, DWConv)) and hasattr(m, "bn"):
                     if isinstance(m, Conv2):
                         m.fuse_convs()
@@ -230,7 +257,7 @@ class BaseModel(nn.Module):
             (BaseModel): An updated BaseModel object.
         """
         self = super()._apply(fn)
-        m = self.model[-1]  # Detect()
+        m = self.model_clear.model[-1]  # Detect()
         if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
             m.stride = fn(m.stride)
             m.anchors = fn(m.anchors)
@@ -284,24 +311,26 @@ class DetectionModel(BaseModel):
         if nc and nc != self.yaml["nc"]:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml["nc"] = nc  # override YAML value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)  # model, savelist
+        # self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)  # model, savelist
+        self.model_clear = BaseModelClear(deepcopy(self.yaml), ch=ch, verbose=verbose)
+        self.stride = self.model_clear.stride
         self.names = {i: f"{i}" for i in range(self.yaml["nc"])}  # default names dict
         self.inplace = self.yaml.get("inplace", True)
 
-        # Build strides
-        m = self.model[-1]  # Detect()
-        if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
-            s = 256  # 2x min stride
-            m.inplace = self.inplace
-            forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
-            self.stride = m.stride
-            m.bias_init()  # only run once
-        else:
-            self.stride = torch.Tensor([32])  # default stride for i.e. RTDETR
+        # # Build strides
+        # m = self.model[-1]  # Detect()
+        # if isinstance(m, Detect):  # includes all Detect subclasses like Segment, Pose, OBB, WorldDetect
+        #     s = 256  # 2x min stride
+        #     m.inplace = self.inplace
+        #     forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
+        #     m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+        #     self.stride = m.stride
+        #     m.bias_init()  # only run once
+        # else:
+        #     self.stride = torch.Tensor([32])  # default stride for i.e. RTDETR
 
         # Init weights, biases
-        initialize_weights(self)
+        # initialize_weights(self)
         if verbose:
             self.info()
             LOGGER.info("")

@@ -652,29 +652,31 @@ class Model(nn.Module):
             args["resume"] = self.ckpt_path
 
         self.trainer = (trainer or self._smart_load("trainer"))(overrides=args, _callbacks=self.callbacks)
-        if not args.get("resume"):  # manually set model only if not resuming
-            self.trainer.model = self.trainer.get_model(weights=self.model if self.ckpt else None, cfg=self.model.yaml)
-            self.model = self.trainer.model
+        # if not args.get("resume"):  # manually set model only if not resuming
+        #     self.trainer.model = self.trainer.get_model(weights=self.model if self.ckpt else None, cfg=self.model.yaml)
+        #     self.model = self.trainer.model
 
-            if SETTINGS["hub"] is True and not self.session:
-                # Create a model in HUB
-                try:
-                    self.session = self._get_hub_session(self.model_name)
-                    if self.session:
-                        self.session.create_model(args)
-                        # Check model was created
-                        if not getattr(self.session.model, "id", None):
-                            self.session = None
-                except (PermissionError, ModuleNotFoundError):
-                    # Ignore PermissionError and ModuleNotFoundError which indicates hub-sdk not installed
-                    pass
+        #     if SETTINGS["hub"] is True and not self.session:
+        #         # Create a model in HUB
+        #         try:
+        #             self.session = self._get_hub_session(self.model_name)
+        #             if self.session:
+        #                 self.session.create_model(args)
+        #                 # Check model was created
+        #                 if not getattr(self.session.model, "id", None):
+        #                     self.session = None
+        #         except (PermissionError, ModuleNotFoundError):
+        #             # Ignore PermissionError and ModuleNotFoundError which indicates hub-sdk not installed
+        #             pass
+        self.trainer.model = self.model
 
         self.trainer.hub_session = self.session  # attach optional HUB session
         self.trainer.train()
         # Update model and cfg after training
         if RANK in {-1, 0}:
-            ckpt = self.trainer.best if self.trainer.best.exists() else self.trainer.last
-            self.model, _ = attempt_load_one_weight(ckpt)
+            # ckpt = self.trainer.best if self.trainer.best.exists() else self.trainer.last
+            # self.model, _ = attempt_load_one_weight(ckpt)
+            self.model = self.trainer.model
             self.overrides = self.model.args
             self.metrics = getattr(self.trainer.validator, "metrics", None)  # TODO: no metrics returned by DDP
         return self.metrics

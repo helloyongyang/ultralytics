@@ -153,20 +153,22 @@ class v8DetectionLoss:
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
 
-        m = model.model[-1]  # Detect() module
+        # m = model.model_clear.model[-1]  # Detect() module
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
         self.hyp = h
-        self.stride = m.stride  # model strides
-        self.nc = m.nc  # number of classes
-        self.no = m.nc + m.reg_max * 4
-        self.reg_max = m.reg_max
+        self.stride = torch.tensor([ 8., 16., 32.]) # m.stride  # model strides
+        self.nc = 80 # m.nc  # number of classes
+        self.no = 80 + 16 * 4 # m.nc + m.reg_max * 4
+        self.reg_max = 16 # m.reg_max
         self.device = device
 
-        self.use_dfl = m.reg_max > 1
+        self.use_dfl = 16 # m.reg_max > 1
 
         self.assigner = TaskAlignedAssigner(topk=10, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
-        self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        # self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
+        self.bbox_loss = BboxLoss(16 - 1, use_dfl=self.use_dfl).to(device)
+        # self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        self.proj = torch.arange(16, dtype=torch.float, device=device)
 
     def preprocess(self, targets, batch_size, scale_tensor):
         """Preprocesses the target counts and matches with the input batch size to output a tensor."""

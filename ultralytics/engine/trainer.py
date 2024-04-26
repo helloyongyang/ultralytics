@@ -335,7 +335,9 @@ class BaseTrainer:
                 warnings.simplefilter("ignore")  # suppress 'Detected lr_scheduler.step() before optimizer.step()'
                 self.scheduler.step()
 
-            self.model.train()
+            # self.model.train()
+            self._model_train()
+
             if RANK != -1:
                 self.train_loader.sampler.set_epoch(epoch)
             pbar = enumerate(self.train_loader)
@@ -460,6 +462,15 @@ class BaseTrainer:
             self.run_callbacks("on_train_end")
         torch.cuda.empty_cache()
         self.run_callbacks("teardown")
+
+    def _model_train(self):
+        """Set model in training mode."""
+        self.model.train()
+
+        # Freeze BN
+        for n, m in self.model.named_modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
 
     def save_model(self):
         """Save model training checkpoints with additional metadata."""

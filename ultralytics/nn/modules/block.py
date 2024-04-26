@@ -210,6 +210,25 @@ class C2(nn.Module):
         a, b = self.cv1(x).chunk(2, 1)
         return self.cv2(torch.cat((self.m(a), b), 1))
 
+class Chunk(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.c = c
+    def forward(self, x):
+        # y = list(x.chunk(2, 1))
+        y = list(x.split((self.c, self.c), 1))
+        return y
+
+class Cat(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, x):
+        return torch.cat(x, 1)
+
+# @torch.fx.wrap
+# def cat(x):
+#     return torch.cat(x, 1)
+
 
 class C2f(nn.Module):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
@@ -223,12 +242,20 @@ class C2f(nn.Module):
         self.cv1 = Conv(c1, 2 * self.c, 1, 1)
         self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
         self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+        self.chunk = Chunk(self.c)
+        self.cat = Cat()
+        self.n = n
 
     def forward(self, x):
         """Forward pass through C2f layer."""
-        y = list(self.cv1(x).chunk(2, 1))
-        y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y, 1))
+        # y = list(self.cv1(x).chunk(2, 1))
+        y = self.chunk(self.cv1(x))
+        # y.extend(m(y[-1]) for m in self.m)
+        for k in range(self.n):
+            y.append(self.m[k](y[-1]))
+        # return self.cv2(torch.cat(y, 1))
+        return self.cv2(self.cat(y))
+        # return self.cv2(cat(y))
 
     def forward_split(self, x):
         """Forward pass using split() instead of chunk()."""
