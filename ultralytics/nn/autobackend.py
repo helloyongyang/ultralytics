@@ -122,7 +122,7 @@ class AutoBackend(nn.Module):
             ncnn,
             triton,
         ) = self._model_type(w)
-        fp16 &= pt or jit or onnx or xml or engine or nn_module or triton  # FP16
+        fp16 = False # &= pt or jit or onnx or xml or engine or nn_module or triton  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
         model, metadata = None, None
@@ -139,14 +139,15 @@ class AutoBackend(nn.Module):
 
         # In-memory PyTorch model
         if nn_module:
-            model = weights.to(device)
+            model = weights
+            model.model_clear = weights.model_clear.to(device)
             if fuse:
                 model = model.fuse(verbose=verbose)
             if hasattr(model, "kpt_shape"):
                 kpt_shape = model.kpt_shape  # pose-only
             stride = max(int(model.stride.max()), 32)  # model stride
             names = model.module.names if hasattr(model, "module") else model.names  # get class names
-            model.half() if fp16 else model.float()
+            model.model_clear.half() if fp16 else model.model_clear.float()
             self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
             pt = True
 
