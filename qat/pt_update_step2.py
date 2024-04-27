@@ -2,8 +2,7 @@ from ultralytics import YOLO
 import torch
 
 
-model = YOLO('yolov8n.pt')
-weights = model.state_dict()
+weights = torch.load("yolov8n.pth")
 
 new_weights = {}
 
