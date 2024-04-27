@@ -287,8 +287,10 @@ class BaseTrainer:
                 self.plot_training_labels()
 
         # Optimizer
-        self.accumulate = max(round(self.args.nbs / self.batch_size), 1)  # accumulate loss before optimizing
-        weight_decay = self.args.weight_decay * self.batch_size * self.accumulate / self.args.nbs  # scale weight_decay
+        # self.accumulate = max(round(self.args.nbs / self.batch_size), 1)  # accumulate loss before optimizing
+        self.accumulate = 1
+        # weight_decay = self.args.weight_decay * self.batch_size * self.accumulate / self.args.nbs  # scale weight_decay
+        weight_decay = 0
         iterations = math.ceil(len(self.train_loader.dataset) / max(self.batch_size, self.args.nbs)) * self.epochs
         self.optimizer = self.build_optimizer(
             model=self.model,
@@ -312,7 +314,8 @@ class BaseTrainer:
         self._setup_train(world_size)
 
         nb = len(self.train_loader)  # number of batches
-        nw = max(round(self.args.warmup_epochs * nb), 100) if self.args.warmup_epochs > 0 else -1  # warmup iterations
+        # nw = max(round(self.args.warmup_epochs * nb), 100) if self.args.warmup_epochs > 0 else -1  # warmup iterations
+        nw = 1
         last_opt_step = -1
         self.epoch_time = None
         self.epoch_time_start = time.time()
@@ -367,17 +370,18 @@ class BaseTrainer:
                             x["momentum"] = np.interp(ni, xi, [self.args.warmup_momentum, self.args.momentum])
 
                 # Forward
-                with torch.cuda.amp.autocast(self.amp):
-                    batch = self.preprocess_batch(batch)
-                    self.loss, self.loss_items = self.model(batch)
-                    if RANK != -1:
-                        self.loss *= world_size
-                    self.tloss = (
-                        (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None else self.loss_items
-                    )
+                # with torch.cuda.amp.autocast(self.amp):
+                batch = self.preprocess_batch(batch)
+                self.loss, self.loss_items = self.model(batch)
+                if RANK != -1:
+                    self.loss *= world_size
+                self.tloss = (
+                    (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None else self.loss_items
+                )
 
                 # Backward
-                self.scaler.scale(self.loss).backward()
+                # self.scaler.scale(self.loss).backward()
+                self.loss.backward()
 
                 # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
                 if ni - last_opt_step >= self.accumulate:
